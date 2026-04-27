@@ -32,6 +32,9 @@ LABEL org.opencontainers.image.source="https://github.com/g-Poulami/docker-pipel
 RUN groupadd -r bioinfo && useradd -r -g bioinfo bioinfo
 
 COPY --from=builder /build/FastQC /opt/fastqc
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        perl \
+    && rm -rf /var/lib/apt/lists/*
 RUN ln -s /opt/fastqc/fastqc /usr/local/bin/fastqc
 
 RUN mkdir -p /data/input /data/output && chown -R bioinfo:bioinfo /data
