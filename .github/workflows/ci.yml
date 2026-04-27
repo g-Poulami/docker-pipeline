@@ -22,7 +22,7 @@ jobs:
             test: "trimmomatic -version || true"
           - service: bwa
             image: docker-pipeline/bwa:0.7.18
-            test: "bwa 2>&1 | grep -i version || true"
+            test_cmd: "--version || true"
           - service: samtools
             image: docker-pipeline/samtools:1.19
             test: "samtools --version | head -1"
@@ -47,7 +47,7 @@ jobs:
 
       - name: Test ${{ matrix.service }}
         run: |
-          docker run --rm ${{ matrix.image }} sh -c "${{ matrix.test }}"
+          docker run --rm --entrypoint sh ${{ matrix.image }} -c "${{ matrix.test }}"
 
       - name: Scan for vulnerabilities
         uses: aquasecurity/trivy-action@master
