@@ -17,11 +17,11 @@ RUN wget -q \
     "https://github.com/lh3/bwa/archive/refs/tags/v${BWA_VERSION}.tar.gz" \
     -O bwa.tar.gz \
     && tar -xzf bwa.tar.gz \
-    && cd bwa-${BWA_VERSION} \
+    && cd bwa-* \
     && make \
     && cp bwa /usr/local/bin/bwa \
     && cd .. \
-    && rm -rf bwa.tar.gz bwa-${BWA_VERSION}
+    && rm -rf bwa.tar.gz bwa-*
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
