@@ -22,7 +22,9 @@ RUN wget -q \
     && cd samtools-${SAMTOOLS_VERSION} \
     && ./configure --prefix=/opt/samtools \
     && make \
-    && make install
+    && make install \
+    && cd .. \
+    && rm -rf samtools.tar.bz2 samtools-${SAMTOOLS_VERSION}
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
