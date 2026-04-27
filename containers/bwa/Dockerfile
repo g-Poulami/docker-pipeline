@@ -14,12 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 RUN wget -q \
-    "https://github.com/lh3/bwa/releases/download/v${BWA_VERSION}/bwa-${BWA_VERSION}.tar.bz2" \
-    -O bwa.tar.bz2 \
-    && tar -xjf bwa.tar.bz2 \
+    "https://github.com/lh3/bwa/archive/refs/tags/v${BWA_VERSION}.tar.gz" \
+    -O bwa.tar.gz \
+    && tar -xzf bwa.tar.gz \
     && cd bwa-${BWA_VERSION} \
     && make \
-    && cp bwa /usr/local/bin/bwa
+    && cp bwa /usr/local/bin/bwa \
+    && cd .. \
+    && rm -rf bwa.tar.gz bwa-${BWA_VERSION}
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
