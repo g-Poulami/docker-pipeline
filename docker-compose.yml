@@ -1,0 +1,239 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml
+#
+# Variant calling pipeline orchestrated with Docker Compose.
+# Each tool runs in its own container. Data passes between containers
+# via named volumes. No tool is installed on the host machine.
+#
+# Architecture:
+#
+#   fastqc_raw  ──────────────────────────────────────────────┐
+#   trimmomatic ──► fastqc_trimmed                            │
+#   bwa_index   ──► bwa_mem ──► samtools_sort ──► samtools_index  ──► multiqc
+#                               samtools_flagstat ────────────┘
+#
+# Named volumes:
+#   reads_data   : raw and trimmed FASTQ files
+#   ref_data     : reference genome and BWA index
+#   bam_data     : SAM and BAM files
+#   qc_data      : FastQC, flagstat, and other QC outputs
+#
+# Usage:
+#   See scripts/run_pipeline.sh for the full pipeline runner.
+#   Individual steps can be run with:
+#     docker compose run --rm fastqc_raw
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+# ── Named volumes — data persists between container runs ─────────────────────
+volumes:
+  reads_data:
+  ref_data:
+  bam_data:
+  qc_data:
+  results_data:
+
+# ── Shared environment loaded from .env file ──────────────────────────────────
+x-env: &common-env
+  env_file: .env
+
+services:
+
+  # ── Step 1a: FastQC on raw reads ───────────────────────────────────────────
+  fastqc_raw:
+    build:
+      context: containers/fastqc
+      args:
+        FASTQC_VERSION: "0.12.1"
+    image: docker-pipeline/fastqc:0.12.1
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${READS_DIR}
+        target: /data/input
+        read_only: true
+      - qc_data:/data/output
+    command: >
+      --threads 4
+      --outdir /data/output/fastqc_raw
+      /data/input/${R1}
+      /data/input/${R2}
+
+  # ── Step 1b: Trim adapters ─────────────────────────────────────────────────
+  trimmomatic:
+    build:
+      context: containers/trimmomatic
+      args:
+        TRIMMOMATIC_VERSION: "0.39"
+    image: docker-pipeline/trimmomatic:0.39
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${READS_DIR}
+        target: /data/input
+        read_only: true
+      - reads_data:/data/output
+    command: >
+      PE
+      -threads 4
+      -phred33
+      /data/input/${R1}
+      /data/input/${R2}
+      /data/output/${SAMPLE}_1P.fastq.gz
+      /data/output/${SAMPLE}_1U.fastq.gz
+      /data/output/${SAMPLE}_2P.fastq.gz
+      /data/output/${SAMPLE}_2U.fastq.gz
+      ILLUMINACLIP:/opt/trimmomatic/adapters/TruSeq3-PE.fa:2:30:10
+      LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+  # ── Step 1c: FastQC on trimmed reads ───────────────────────────────────────
+  fastqc_trimmed:
+    image: docker-pipeline/fastqc:0.12.1
+    <<: *common-env
+    volumes:
+      - reads_data:/data/input:ro
+      - qc_data:/data/output
+    command: >
+      --threads 4
+      --outdir /data/output/fastqc_trimmed
+      /data/input/${SAMPLE}_1P.fastq.gz
+      /data/input/${SAMPLE}_2P.fastq.gz
+    depends_on:
+      - trimmomatic
+
+  # ── Step 2: Index reference genome ────────────────────────────────────────
+  bwa_index:
+    build:
+      context: containers/bwa
+      args:
+        BWA_VERSION: "0.7.18"
+    image: docker-pipeline/bwa:0.7.18
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${GENOME_DIR}
+        target: /data/ref
+        read_only: false
+    command: index /data/ref/${GENOME_FILE}
+
+  # ── Step 3: Align trimmed reads ────────────────────────────────────────────
+  bwa_mem:
+    image: docker-pipeline/bwa:0.7.18
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${GENOME_DIR}
+        target: /data/ref
+        read_only: true
+      - reads_data:/data/input:ro
+      - bam_data:/data/output
+    # stdout is redirected to SAM file by the pipeline runner script
+    command: >
+      mem
+      -t 8
+      -R @RG\tID:${SAMPLE}\tSM:${SAMPLE}\tPL:ILLUMINA\tLB:${SAMPLE}\tPU:${SAMPLE}
+      /data/ref/${GENOME_FILE}
+      /data/input/${SAMPLE}_1P.fastq.gz
+      /data/input/${SAMPLE}_2P.fastq.gz
+    depends_on:
+      - bwa_index
+      - trimmomatic
+
+  # ── Step 4: Sort SAM -> sorted BAM ────────────────────────────────────────
+  samtools_sort:
+    build:
+      context: containers/samtools
+      args:
+        SAMTOOLS_VERSION: "1.19"
+    image: docker-pipeline/samtools:1.19
+    <<: *common-env
+    volumes:
+      - bam_data:/data
+    command: >
+      sort
+      -@ 4
+      -o /data/${SAMPLE}.sorted.bam
+      /data/${SAMPLE}.sam
+    depends_on:
+      - bwa_mem
+
+  # ── Step 5: Index sorted BAM ───────────────────────────────────────────────
+  samtools_index:
+    image: docker-pipeline/samtools:1.19
+    <<: *common-env
+    volumes:
+      - bam_data:/data
+    command: index /data/${SAMPLE}.sorted.bam
+    depends_on:
+      - samtools_sort
+
+  # ── Step 6: Alignment statistics ──────────────────────────────────────────
+  samtools_flagstat:
+    image: docker-pipeline/samtools:1.19
+    <<: *common-env
+    volumes:
+      - bam_data:/data/bam
+      - qc_data:/data/qc
+    command: flagstat /data/bam/${SAMPLE}.sorted.bam
+    depends_on:
+      - samtools_sort
+
+  # ── Step 7: GATK variant calling ──────────────────────────────────────────
+  gatk_dict:
+    build:
+      context: containers/gatk
+    image: docker-pipeline/gatk:4.5.0.0
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${GENOME_DIR}
+        target: /data/ref
+    command: CreateSequenceDictionary -R /data/ref/${GENOME_FILE}
+
+  gatk_faidx:
+    image: docker-pipeline/samtools:1.19
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${GENOME_DIR}
+        target: /data/ref
+    command: faidx /data/ref/${GENOME_FILE}
+
+  gatk_haplotypecaller:
+    image: docker-pipeline/gatk:4.5.0.0
+    <<: *common-env
+    volumes:
+      - type: bind
+        source: ${GENOME_DIR}
+        target: /data/ref
+        read_only: true
+      - bam_data:/data/bam:ro
+      - results_data:/data/output
+    command: >
+      HaplotypeCaller
+      -I /data/bam/${SAMPLE}.sorted.bam
+      -R /data/ref/${GENOME_FILE}
+      -ERC GVCF
+      -O /data/output/${SAMPLE}.g.vcf.gz
+    depends_on:
+      - samtools_index
+      - gatk_dict
+      - gatk_faidx
+
+  # ── Step 8: MultiQC ───────────────────────────────────────────────────────
+  multiqc:
+    image: quay.io/biocontainers/multiqc:1.21--pyhdfd78af_0
+    <<: *common-env
+    volumes:
+      - qc_data:/data/qc:ro
+      - results_data:/data/output
+    command: >
+      /data/qc
+      --outdir /data/output/multiqc
+      --filename multiqc_report.html
+      --title "docker-pipeline QC Report"
+    depends_on:
+      - fastqc_raw
+      - fastqc_trimmed
+      - samtools_flagstat

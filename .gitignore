@@ -1,0 +1,16 @@
+.env
+results/
+*.bam
+*.sam
+*.fastq
+*.fastq.gz
+*.fa.amb
+*.fa.ann
+*.fa.bwt
+*.fa.pac
+*.fa.sa
+*.fa.fai
+*.dict
+.DS_Store
+.idea/
+.vscode/
