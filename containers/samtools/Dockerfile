@@ -16,15 +16,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 RUN wget -q \
-    "https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VERSION}/samtools-${SAMTOOLS_VERSION}.tar.bz2" \
-    -O samtools.tar.bz2 \
-    && tar -xjf samtools.tar.bz2 \
+    "https://github.com/samtools/samtools/archive/refs/tags/${SAMTOOLS_VERSION}.tar.gz" \
+    -O samtools.tar.gz \
+    && tar -xzf samtools.tar.gz \
     && cd samtools-${SAMTOOLS_VERSION} \
+    && autoheader \
+    && autoconf \
     && ./configure --prefix=/opt/samtools \
     && make \
     && make install \
     && cd .. \
-    && rm -rf samtools.tar.bz2 samtools-${SAMTOOLS_VERSION}
+    && rm -rf samtools.tar.gz samtools-${SAMTOOLS_VERSION}
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
