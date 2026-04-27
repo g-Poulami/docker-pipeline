@@ -22,7 +22,7 @@ jobs:
             test: "trimmomatic -version || true"
           - service: bwa
             image: docker-pipeline/bwa:0.7.18
-            test_cmd: "--version || true"
+            test: "bwa 2>&1 | head -1 || true"
           - service: samtools
             image: docker-pipeline/samtools:1.19
             test: "samtools --version | head -1"
