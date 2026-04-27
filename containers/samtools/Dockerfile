@@ -4,7 +4,7 @@
 
 FROM debian:bookworm-slim AS builder
 
-ARG SAMTOOLS_VERSION=1.19
+ARG SAMTOOLS_VERSION=1.21
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget make gcc autoconf \
@@ -16,22 +16,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 RUN wget -q \
-    "https://github.com/samtools/samtools/archive/refs/tags/${SAMTOOLS_VERSION}.tar.gz" \
-    -O samtools.tar.gz \
-    && tar -xzf samtools.tar.gz \
+    "https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VERSION}/samtools-${SAMTOOLS_VERSION}.tar.bz2" \
+    -O samtools.tar.bz2 \
+    && tar -xjf samtools.tar.bz2 \
     && cd samtools-${SAMTOOLS_VERSION} \
-    && autoheader \
-    && autoconf \
     && ./configure --prefix=/opt/samtools \
     && make \
     && make install \
     && cd .. \
-    && rm -rf samtools.tar.gz samtools-${SAMTOOLS_VERSION}
+    && rm -rf samtools.tar.bz2 samtools-${SAMTOOLS_VERSION}
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
-ARG SAMTOOLS_VERSION=1.19
+ARG SAMTOOLS_VERSION=1.21
 LABEL org.opencontainers.image.title="SAMtools"
 LABEL org.opencontainers.image.version="${SAMTOOLS_VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/g-Poulami/docker-pipeline"
