@@ -35,13 +35,10 @@ LABEL org.opencontainers.image.version="${SAMTOOLS_VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/g-Poulami/docker-pipeline"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        zlib1g libbz2-1.0 liblzma5 libcurl4 libncurses6 \
+        samtools \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd -r bioinfo && useradd -r -g bioinfo bioinfo
-
-COPY --from=builder /opt/samtools /opt/samtools
-RUN ln -s /opt/samtools/bin/samtools /usr/local/bin/samtools
 
 RUN mkdir -p /data/input /data/output && chown -R bioinfo:bioinfo /data
 
